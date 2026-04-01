@@ -17,6 +17,7 @@ variable "github_actor" {
   type        = string
 }
 
+
 resource "render_web_service" "flask_app" {
   name   = "flask-render-iac-${var.github_actor}"
   plan   = "free"
@@ -27,12 +28,34 @@ resource "render_web_service" "flask_app" {
       image_url = var.image_url
       tag       = var.image_tag
     }
+  }
+
+  env_vars = {
+    ENV = {
+      value = "production"
+    }
+    DATABASE_URL = {
+      value = var.database_url
+    }
+  }
 }
-env_vars = {
-  ENV = {
-    value = "production"
+
+
+resource "render_web_service" "adminer" {
+  name   = "adminer-${var.github_actor}"
+  plan   = "free"
+  region = "frankfurt"
+
+  runtime_source = {
+    image = {
+      image_url = "docker.io/library/adminer"
+      tag       = "latest"
+    }
   }
 
+  env_vars = {
+    ADMINER_DEFAULT_SERVER = {
+      value = var.pg_host
+    }
   }
-
 }
