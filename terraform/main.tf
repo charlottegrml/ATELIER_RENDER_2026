@@ -27,6 +27,12 @@ resource "render_web_service" "flask_app" {
       image_url = var.image_url
       tag       = var.image_tag
     }
+
+env_vars = {
+  ENV = {
+    value = "production"
+  }
+
   }
 
 }
