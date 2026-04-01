@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 
 // ⚠️ Remplacez par l'URL de votre Flask déployé sur Render
-const API_URL = "https://flask-render-iac-charlottegrml.onrender.com/";
+const API_URL = "https://flask-render-iac-VOTRE_NOM.onrender.com";
 
 const styles = {
   body: {
