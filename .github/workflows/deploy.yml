@@ -1,17 +1,13 @@
 name: CI/CD Render
-
 on:
   push:
     branches: ["main"]
-
 permissions:
   contents: read
   packages: write
-
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,19 +23,15 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           ACTOR=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
           SERVICE_NAME="flask-render-iac-${ACTOR}"
+          ADMINER_NAME="adminer-${ACTOR}"
           IMAGE_URL="ghcr.io/${OWNER}/flask-render-iac"
           IMAGE_TAG="${{ github.sha }}"
-
-          echo "OWNER=${OWNER}" >> "$GITHUB_ENV"
-          echo "ACTOR=${ACTOR}" >> "$GITHUB_ENV"
+          echo "OWNER=${OWNER}"           >> "$GITHUB_ENV"
+          echo "ACTOR=${ACTOR}"           >> "$GITHUB_ENV"
           echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
-          echo "IMAGE_URL=${IMAGE_URL}" >> "$GITHUB_ENV"
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
-
-          echo "Using owner: ${OWNER}"
-          echo "Using actor: ${ACTOR}"
-          echo "Using service name: ${SERVICE_NAME}"
-          echo "Using image: ${IMAGE_URL}:${IMAGE_TAG}"
+          echo "ADMINER_NAME=${ADMINER_NAME}" >> "$GITHUB_ENV"
+          echo "IMAGE_URL=${IMAGE_URL}"   >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${IMAGE_TAG}"   >> "$GITHUB_ENV"
 
       - name: Login GHCR
         uses: docker/login-action@v3
@@ -56,7 +48,7 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Delete existing Render service if present
+      - name: Delete existing Render services if present
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
@@ -64,26 +56,23 @@ jobs:
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
             https://api.render.com/v1/services)
 
-          echo "Services returned by Render:"
-          echo "$RESPONSE" | jq -r '.[] | select(type=="object" and .service != null) | .service.name'
+          for NAME in "$SERVICE_NAME" "$ADMINER_NAME"; do
+            SERVICE_ID=$(echo "$RESPONSE" \
+              | jq -r --arg N "$NAME" '
+                  .[] | select(type=="object" and .service != null)
+                  | select(.service.name == $N)
+                  | .service.id' \
+              | head -n 1)
 
-          SERVICE_ID=$(echo "$RESPONSE" \
-            | jq -r --arg NAME "$SERVICE_NAME" '
-                .[]
-                | select(type=="object" and .service != null)
-                | select(.service.name == $NAME)
-                | .service.id
-              ' \
-            | head -n 1)
-
-          if [ -z "$SERVICE_ID" ] || [ "$SERVICE_ID" = "null" ]; then
-            echo "No existing Render service named ${SERVICE_NAME}. Nothing to delete."
-          else
-            echo "Deleting existing Render service: ${SERVICE_NAME} (${SERVICE_ID})"
-            curl -s -X DELETE \
-              -H "Authorization: Bearer ${RENDER_API_KEY}" \
-              "https://api.render.com/v1/services/${SERVICE_ID}"
-          fi
+            if [ -z "$SERVICE_ID" ] || [ "$SERVICE_ID" = "null" ]; then
+              echo "Aucun service Render nommé ${NAME}."
+            else
+              echo "Suppression du service : ${NAME} (${SERVICE_ID})"
+              curl -s -X DELETE \
+                -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                "https://api.render.com/v1/services/${SERVICE_ID}"
+            fi
+          done
 
       - name: Wait after delete
         run: sleep 10
@@ -98,9 +87,11 @@ jobs:
       - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
-            -var="render_api_key=${{ secrets.RENDER_API_KEY }}" \
-            -var="render_owner_id=${{ secrets.RENDER_OWNER_ID }}" \
-            -var="image_url=${IMAGE_URL}" \
-            -var="image_tag=${IMAGE_TAG}" \
-            -var="github_actor=${ACTOR}"
+            -var="render_api_key=${{ secrets.RENDER_API_KEY }}"    \
+            -var="render_owner_id=${{ secrets.RENDER_OWNER_ID }}"  \
+            -var="image_url=${IMAGE_URL}"                          \
+            -var="image_tag=${IMAGE_TAG}"                          \
+            -var="github_actor=${ACTOR}"                           \
+            -var="database_url=${{ secrets.DATABASE_URL }}"        \
+            -var="pg_host=${{ secrets.PG_HOST }}"
         working-directory: terraform
